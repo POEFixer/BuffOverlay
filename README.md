@@ -1,6 +1,6 @@
 # Buff Overlay
 
-Current version: 1.0.1
+Current version: 1.0.2
 
 Requires POE2Fixer 364 or newer.
 

@@ -9,7 +9,7 @@
 POEFIXER_PLUGIN_INFO(
     "BuffOverlay",
     "Buff Overlay",
-    "1.0.1",
+    "1.0.2",
     "1k4ru5g3, POEFixer",
     "Shows chosen buffs and skill states as icons, charges, time left or custom text anywhere on screen, with a live preview and drag-to-place.")
 
