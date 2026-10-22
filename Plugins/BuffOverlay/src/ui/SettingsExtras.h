@@ -1,14 +1,12 @@
 // The few settings-tab helpers the SDK kit (POEFixer/plugin_sdk/PluginUi.h)
 // does not have: a row continuation in a label column, wrap-if-it-does-not-fit
 // for button rows, coloured wrapped text, a length-capped text field, a
-// status dot, text cut with an ellipsis, a folding heading and a colour swatch
-// that dims when disabled. Everything else comes from PluginUi.
+// status dot, text cut with an ellipsis and a colour swatch that dims when
+// disabled. Everything else comes from PluginUi.
 #pragma once
 
 #include "../../../../POEFixer/plugin_sdk/PluginUi.h"
 #include "../../../../POEFixer/imgui/imgui_internal.h"
-
-#include <cstdio>
 
 #include <string>
 
@@ -86,18 +84,6 @@ inline void TextEllipsis(const char* text, const ImVec4& color) {
     ImGui::RenderTextEllipsis(ImGui::GetWindowDrawList(), ImVec2(p.x, y), ImVec2(p.x + w, y + ts.y), p.x + w, text,
                               nullptr, &ts);
     ImGui::PopStyleColor();
-}
-
-// A heading that folds the rest of its card (closed until clicked): the
-// accent title with an arrow and no filled bar, so it stays inside the card's
-// padding like PluginUi::Heading. Returns true while open.
-inline bool CollapsibleHeading(const char* icon, const char* title, const char* id) {
-    char buf[256];
-    std::snprintf(buf, sizeof(buf), "%s  %s###%s", icon ? icon : "", title ? title : "", id ? id : "");
-    ImGui::PushStyleColor(ImGuiCol_Text, PluginUi::Colors().Accent);
-    const bool open = ImGui::TreeNodeEx(buf, ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
-    ImGui::PopStyleColor();
-    return open;
 }
 
 // PluginUi::Swatch that also looks disabled: ImGui does not dim colour

@@ -65,6 +65,9 @@ void BuffOverlayPlugin::DrawSettings() {
         ImGui::PopID();
     }
     DrawSectionDiagnostics();
+    ImGui::Spacing();
+    PluginUi::Hint("Originally created by 1k4ru5g3. Maintained by POEFixer.");
+    ImGui::Spacing();
 }
 
 void BuffOverlayPlugin::DrawSectionGeneral() {
@@ -550,8 +553,7 @@ void BuffOverlayPlugin::DrawSectionLook(Tracker& t) {
 }
 
 void BuffOverlayPlugin::DrawSectionDiagnostics() {
-    Ui::BeginCard("##cardDiag");
-    if (Ux::CollapsibleHeading(ICON_FA_BUG, "Diagnostics", "diag")) {
+    if (Ui::BeginDiagnostics("The buffs and active skills the overlay sees on your character, and the settings file.")) {
         WantLists();
         if (!m_inGame) {
             Ui::Hint("Enter an area in game to see your active buffs and skills.");
@@ -623,8 +625,8 @@ void BuffOverlayPlugin::DrawSectionDiagnostics() {
         const char* openLabel = ICON_FA_FOLDER_OPEN " Open folder###openCfg";
         Ux::SameLineOrWrap(Ui::ButtonWidth(openLabel));
         if (Ui::SubtleButton(openLabel)) OpenFolder(DirectoryPath() / L"config");
+        Ui::EndDiagnostics();
     }
-    Ui::EndCard();
     ImGui::Spacing();
 }
 

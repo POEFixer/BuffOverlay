@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1
+
+- Diagnostics now looks the same as in the other POEFixer plugins.
+- The bottom of the settings tab names the plugin's original author, as in the other plugins maintained by POEFixer.
+
 ## 1.0.0
 
 - First POEFixer release of Buff Overlay, with your trackers from the original plugin imported automatically.
