@@ -1,0 +1,12 @@
+# Changelog
+
+## 1.0.0
+
+- First POEFixer release of Buff Overlay, with your trackers from the original plugin imported automatically.
+- Much lighter on the game: buffs and skills are read 20 times a second instead of every frame, and only when a tracker needs them.
+- Pick a buff or skill from what is active on your character; names ending in a changing number get a "Starts with" rule.
+- New settings layout with a live preview, plain choices for icon, text and time left, and tooltips on every option.
+- "Arrange on screen" lets you drag trackers with the menu open or closed and is no longer left on after a restart.
+- Text outline and overall opacity for better readability; time left above a minute shows as minutes:seconds.
+- Icons are chosen from the plugin's icons folder inside the overlay (no more blocking file dialog).
+- Settings save automatically and safely; removing every tracker no longer brings the example back.
