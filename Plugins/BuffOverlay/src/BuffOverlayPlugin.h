@@ -10,6 +10,7 @@
 #include "Tracker.h"
 
 #include <chrono>
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -48,9 +49,10 @@ private:
     void RetireIcon(IconTexture& tex);
     void RetireAllIcons();
     void ReleaseRetiredIcons();
-    int FrameNow() const;
     void UpdateOverlayInputWish(bool inGame);
     float SecondsSinceSample() const;
+    // The game's client size (tracker positions are game pixels).
+    ImVec2 GameScreenSize() const;
 
     // ---- overlay (OverlayUI.cpp) ------------------------------------------
     struct Visual {
@@ -104,7 +106,8 @@ private:
     // by trackers using the same file; the per-frame lookup allocates nothing.
     std::unordered_map<std::string, IconTexture> m_icons;
     std::vector<Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>> m_retiredIcons;
-    int m_retiredFrame = -1;   // ImGui frame the newest retired icon was dropped in
+    uint64_t m_drawTick = 0;      // DrawUI calls so far (one per host loop iteration)
+    uint64_t m_retiredTick = 0;   // m_drawTick when the newest retired icon was dropped
 
     // Session-only UI state.
     bool m_arrange = false;
@@ -112,6 +115,9 @@ private:
     int m_selected = 0;
     int m_dragging = -1;
     ImGuiID m_settingsWindowId = 0;
+    // The ImGui context that window lives in (only compared, never used): a
+    // separate menu window has its own, where the id means nothing.
+    const ImGuiContext* m_settingsWindowContext = nullptr;
     std::vector<std::string> m_iconFiles;
     bool m_iconFolderMissing = false;
 };

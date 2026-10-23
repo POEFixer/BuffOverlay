@@ -50,6 +50,7 @@ void BuffOverlayPlugin::DrawSettings() {
     RetryBlockedLoad();
     // Arrange frames are kept behind this window (see DrawArrangeFrames).
     m_settingsWindowId = ImGui::GetCurrentWindow()->RootWindow->ID;
+    m_settingsWindowContext = ImGui::GetCurrentContext();
     if (!m_saveError.empty()) Ux::ColoredWrapped(Ui::Colors().Warning, m_saveError.c_str());
     if (m_loadOrigin == LoadOrigin::Legacy)
         Ui::Hint("Your trackers from the original Buff Overlay were imported into config/settings.json.");
@@ -180,7 +181,7 @@ void BuffOverlayPlugin::DrawSectionTrackerList() {
         char name[32];
         std::snprintf(name, sizeof(name), "Tracker %zu", trackers.size() + 1);
         t.label = name;
-        const ImVec2 d = ImGui::GetIO().DisplaySize;
+        const ImVec2 d = GameScreenSize();
         t.x = std::floor(d.x * 0.5f) + static_cast<float>((trackers.size() % 8) * 24);
         t.y = std::floor(d.y * 0.4f) + static_cast<float>((trackers.size() % 8) * 24);
         Sanitize(t);
@@ -540,7 +541,7 @@ void BuffOverlayPlugin::DrawSectionLook(Tracker& t) {
 
     Ux::Indent(col);
     if (Ui::SubtleButton(ICON_FA_CROSSHAIRS " Center on screen###center")) {
-        const ImVec2 d = ImGui::GetIO().DisplaySize;
+        const ImVec2 d = GameScreenSize();
         t.x = std::floor(d.x * 0.5f);
         t.y = std::floor(d.y * 0.5f);
         MarkDirty(false);

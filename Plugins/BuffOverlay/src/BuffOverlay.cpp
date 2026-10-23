@@ -9,7 +9,7 @@
 POEFIXER_PLUGIN_INFO(
     "BuffOverlay",
     "Buff Overlay",
-    "1.0.2",
+    "1.0.3",
     "1k4ru5g3, POEFixer",
     "Shows chosen buffs and skill states as icons, charges, time left or custom text anywhere on screen, with a live preview and drag-to-place.")
 
@@ -225,14 +225,17 @@ void BuffOverlayPlugin::EvaluateTrackers() {
         m_states[i] = Evaluate(m_settings.trackers[i], m_buffs, m_skills);
 }
 
-int BuffOverlayPlugin::FrameNow() const {
-    SetImGuiContext();
-    return ImGui::GetCurrentContext() ? ImGui::GetFrameCount() : -1;
+ImVec2 BuffOverlayPlugin::GameScreenSize() const {
+    // Tracker positions are game pixels. The settings tab may be drawn in a
+    // separate menu window, whose display size is that window's, not the game's.
+    const PluginSDK::ScreenSize s = ctx()->Game.GetScreenSize();
+    if (s.Width > 0.0f && s.Height > 0.0f) return ImVec2(s.Width, s.Height);
+    return ImGui::GetIO().DisplaySize;   // no game window yet
 }
 
 void BuffOverlayPlugin::RetireIcon(IconTexture& tex) {
     if (tex.srv) m_retiredIcons.push_back(std::move(tex.srv));
-    m_retiredFrame = FrameNow();
+    m_retiredTick = m_drawTick;
 }
 
 void BuffOverlayPlugin::RetireAllIcons() {
@@ -242,9 +245,12 @@ void BuffOverlayPlugin::RetireAllIcons() {
 
 void BuffOverlayPlugin::ReleaseRetiredIcons() {
     if (m_retiredIcons.empty()) return;
-    const int frame = FrameNow();
-    // Only once the frame that may have drawn them has been rendered.
-    if (frame < 0 || frame == m_retiredFrame) return;
+    // Only once every frame that may have drawn them has been rendered. The
+    // settings preview and the trackers can be two ImGui contexts (a separate
+    // menu window), each with its own frame numbers, both rendered at the end of
+    // the host loop iteration: so count iterations (DrawUI calls) instead. Two
+    // DrawUI calls after the retire mean its iteration has been rendered.
+    if (m_drawTick - m_retiredTick < 2) return;
     m_retiredIcons.clear();
 }
 
@@ -283,6 +289,7 @@ void BuffOverlayPlugin::UpdateOverlayInputWish(bool inGame) {
 }
 
 void BuffOverlayPlugin::DrawUI() {
+    ++m_drawTick;   // one DrawUI per host loop iteration
     if (!ctx()->ImGuiContext) return;
     SetImGuiContext();
     ReleaseRetiredIcons();

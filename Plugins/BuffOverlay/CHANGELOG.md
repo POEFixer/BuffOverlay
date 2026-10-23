@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.3
+
+- Works with the separate menu window (POEFixer 366): the host hands the plugin the right drawing context for its settings tab and for its overlay.
+- With the menu in a separate window, an icon dropped from the settings preview is freed only after both windows have drawn it (before, this could crash).
+- "Add tracker" and "Center on screen" place the tracker by the game's screen size, not by the size of a separate menu window.
+
 ## 1.0.2
 
 - Rebuilt with the updated plugin SDK headers (POEFixer 365 adds optional calls for UI control names, stash objects and tabs, wider entity scans and the host automation flag). No change in what the plugin does.

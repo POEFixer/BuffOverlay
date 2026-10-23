@@ -156,7 +156,9 @@ void BuffOverlayPlugin::DrawArrangeFrames() {
         if (ImGui::Begin(name, nullptr, flags)) {
             // A new window opens in front of everything; keep the frames behind
             // the settings window so they never cover (or catch clicks on) it.
-            if (ImGui::IsWindowAppearing() && m_settingsWindowId != 0) {
+            // A separate menu window is another ImGui context (and OS window).
+            if (ImGui::IsWindowAppearing() && m_settingsWindowId != 0 &&
+                m_settingsWindowContext == ImGui::GetCurrentContext()) {
                 if (ImGuiWindow* settings = ImGui::FindWindowByID(m_settingsWindowId))
                     ImGui::BringWindowToDisplayBehind(ImGui::GetCurrentWindow(), settings);
             }
