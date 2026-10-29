@@ -19,6 +19,14 @@ namespace BuffOverlay {
 
 constexpr const char* kPluginName = "Buff Overlay";
 
+// A tracker's name as shown: the example tracker's shipped English name in the program
+// language while it is unchanged (display only), `emptyText` for a tracker without a name.
+inline const char* ShownLabel(const Tracker& t, const char* emptyText) {
+    if (t.label.empty()) return emptyText;
+    if (t.label == kExampleTrackerLabel) return I18n::Tr("tracker_example_label");
+    return t.label.c_str();
+}
+
 class BuffOverlayPlugin final : public PluginSDK::Plugin {
 public:
     const char* GetName() const override { return kPluginName; }
@@ -84,7 +92,7 @@ private:
     Settings m_settings;
     bool m_dirty = false;
     Clock::time_point m_dirtySince{};
-    std::string m_saveError;
+    const char* m_saveError = nullptr;   // a key of lang/en.json; null: none
     LoadOrigin m_loadOrigin = LoadOrigin::Defaults;
     // The settings file exists but could not be read: nothing is written over it
     // until the player changes a setting; it is read again a few times meanwhile.

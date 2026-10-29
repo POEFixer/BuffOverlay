@@ -44,7 +44,8 @@ void BuffOverlayPlugin::BuildVisual(const Tracker& t, const TrackerState& s, flo
         else if (!placeholders) parts.icon = false;
     }
     v.icon = parts.icon;
-    FormatTrackerText(t, s, elapsed, v.text, sizeof(v.text));
+    const TrackerWords words{ I18n::Tr("overlay_ready"), I18n::Tr("overlay_not_ready"), I18n::Tr("overlay_seconds") };
+    FormatTrackerText(t, s, elapsed, words, v.text, sizeof(v.text));
     v.fontSize = ImGui::GetFontSize() * t.fontScale;
     v.iconSize = parts.icon ? std::floor(t.iconSize + 0.5f) : 0.0f;
     ImVec2 textSize(0, 0);
@@ -192,7 +193,7 @@ void BuffOverlayPlugin::DrawArrangeFrames() {
         ImGui::PopStyleVar(2);
 
         // Name tag under the frame so trackers are easy to tell apart.
-        const char* label = t.label.empty() ? "Tracker" : t.label.c_str();
+        const char* label = ShownLabel(t, I18n::Tr("arrange_tracker"));
         const float fs = ImGui::GetFontSize() * 0.85f;
         const ImVec2 ls = ImGui::GetFont()->CalcTextSizeA(fs, FLT_MAX, 0.0f, label);
         ImVec2 lp = Snap(ImVec2(x - pad, y + v.size.y + pad + 2.0f));
@@ -218,9 +219,9 @@ void BuffOverlayPlugin::DrawArrangeBanner() {
         ImGui::TextUnformatted(ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT "  Buff Overlay");
         ImGui::PopStyleColor();
         ImGui::SameLine();
-        ImGui::TextUnformatted("Drag the trackers into place.");
+        ImGui::TextUnformatted(I18n::Tr("arrange_banner"));
         ImGui::SameLine();
-        if (ImGui::Button("Done###arrangeDone")) SetArrange(false);
+        if (ImGui::Button(I18n::TrId("arrange_done"))) SetArrange(false);
     }
     ImGui::End();
     ImGui::PopStyleVar();

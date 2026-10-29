@@ -99,7 +99,10 @@
     <ClInclude Include="src\BuffOverlayPlugin.h" />
     <ClInclude Include="src\IconTexture.h" />
     <ClInclude Include="src\Settings.h" />
+    <ClInclude Include="src\Text.h" />
+    <ClInclude Include="src\TextUtil.h" />
     <ClInclude Include="src\Tracker.h" />
+    <ClInclude Include="src\lang_en.generated.h" />
     <ClInclude Include="src\ui\SettingsExtras.h" />
     <ClInclude Include="lib\nlohmann\json.hpp" />
     <ClInclude Include="..\..\POEFixer\plugin_sdk\PluginAbi.h" />

@@ -1,7 +1,10 @@
 // Buff Overlay — lifecycle, settings persistence and the throttled game-data
 // sample. Originally created by 1k4ru5g3 (github.com/1k4ru5g3/BuffOverlayPlugin);
 // maintained by POEFixer.
-#include "BuffOverlayPlugin.h"
+#include "BuffOverlayPlugin.h"   // PluginSDK.h
+// Texts follow the program language (PluginI18n.h): lang/<code>.json next to the DLL, English
+// compiled in through lang_en.generated.h (python tools/plugin_i18n/gen.py Plugins/BuffOverlay).
+#include "lang_en.generated.h"   // once per DLL, after PluginSDK.h
 
 #include "../../../POEFixer/imgui/imgui_internal.h"
 
@@ -9,7 +12,7 @@
 POEFIXER_PLUGIN_INFO(
     "BuffOverlay",
     "Buff Overlay",
-    "1.0.3",
+    "1.0.4",
     "1k4ru5g3, POEFixer",
     "Shows chosen buffs and skill states as icons, charges, time left or custom text anywhere on screen, with a live preview and drag-to-place.")
 
@@ -25,10 +28,6 @@ constexpr size_t kMaxIconCache = 64;
 // A settings file that was locked at load is read again this often, this many times.
 constexpr auto kLoadRetryEvery = std::chrono::seconds(2);
 constexpr int kLoadRetries = 15;
-constexpr const char* kUnreadableNotice =
-    "config/settings.json exists but could not be read (another program may be using it). Your trackers are "
-    "not shown and the file is left alone; it is read again in a moment. Changing a setting here replaces it "
-    "(a copy is kept as settings.json.unreadable).";
 
 BuffSample ToSample(const PluginSDK::Buff& b) {
     BuffSample s;
@@ -81,10 +80,10 @@ void BuffOverlayPlugin::AdoptLoaded(LoadOrigin origin, Settings&& loaded) {
     m_forceSample = true;
     m_selected = 0;
     m_dragging = -1;
-    m_saveError.clear();
+    m_saveError = nullptr;
     if (origin == LoadOrigin::Unreadable) {
         m_loadBlocked = true;
-        m_saveError = kUnreadableNotice;
+        m_saveError = I18n::Key("notice_settings_unreadable");
         ctx()->Log.Warn("[BuffOverlay] config/settings.json exists but could not be read; it is not overwritten "
                         "and is read again shortly");
         return;
@@ -158,7 +157,7 @@ void BuffOverlayPlugin::FlushSettingsIfDue(bool force) {
     if (m_loadBlocked) KeepUnreadableCopy(DirectoryPath());
     if (SaveSettingsTo(DirectoryPath(), m_settings)) {
         m_dirty = false;
-        m_saveError.clear();
+        m_saveError = nullptr;
         if (m_loadBlocked) {
             m_loadBlocked = false;
             ctx()->Log.Warn("[BuffOverlay] Replaced the unreadable config/settings.json after a settings change");
@@ -166,7 +165,7 @@ void BuffOverlayPlugin::FlushSettingsIfDue(bool force) {
     } else {
         // Keep the edit pending and retry after the delay instead of every frame.
         m_dirtySince = Clock::now();
-        m_saveError = "Could not write config/settings.json (is the folder read-only?). Retrying.";
+        m_saveError = I18n::Key("notice_settings_not_written");
     }
 }
 

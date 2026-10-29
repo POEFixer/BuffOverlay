@@ -2,10 +2,13 @@
 // what one tracker shows. No ImGui, no host calls: tests/ builds this alone.
 #pragma once
 
+#include "TextUtil.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -125,10 +128,11 @@ inline void Sanitize(Tracker& t) {
     for (Color* c : { &t.color, &t.backgroundColor }) {
         c->r = Clamp01(c->r); c->g = Clamp01(c->g); c->b = Clamp01(c->b); c->a = Clamp01(c->a);
     }
-    if (t.label.size() > kMaxTextLen) t.label.resize(kMaxTextLen);
-    if (t.pattern.size() > kMaxTextLen) t.pattern.resize(kMaxTextLen);
-    if (t.customText.size() > kMaxTextLen) t.customText.resize(kMaxTextLen);
-    if (t.iconPath.size() > kMaxPathLen) t.iconPath.resize(kMaxPathLen);
+    // Cut on a character boundary: labels and texts are often Cyrillic, Thai or CJK.
+    Utf8Truncate(t.label, kMaxTextLen);
+    Utf8Truncate(t.pattern, kMaxTextLen);
+    Utf8Truncate(t.customText, kMaxTextLen);
+    Utf8Truncate(t.iconPath, kMaxPathLen);
     // Active skills carry no remaining time: drop the time part for them.
     if (static_cast<SourceMode>(t.source) == SourceMode::ActiveSkill) {
         DisplayParts p = Decompose(static_cast<DisplayMode>(t.displayMode));
@@ -252,24 +256,45 @@ inline TrackerState Evaluate(const Tracker& t, const std::vector<BuffSample>& bu
     return s;
 }
 
+// The words FormatTrackerText writes, in the program language: the caller looks
+// them up (the tests pass their own), so this header needs no plugin SDK.
+struct TrackerWords {
+    const char* ready = "";      // a skill that can be used now
+    const char* notReady = "";
+    const char* seconds = "";    // a time under a minute: "{value}s", {value} = "12.3"
+};
+
+// `text` with its "{value}" replaced by `value`, into out (no allocation).
+inline void FillValue(char* out, size_t size, const char* text, const char* value) {
+    if (!out || size == 0) return;
+    const char* mark = text ? std::strstr(text, "{value}") : nullptr;
+    if (!mark) {
+        std::snprintf(out, size, "%s", value);
+        return;
+    }
+    std::snprintf(out, size, "%.*s%s%s", static_cast<int>(mark - text), text, value, mark + 7);
+    DropIncompleteUtf8Tail(out);
+}
+
 // Formats the text part of a tracker into buf (no allocation; called per
 // frame). elapsed = seconds since the sample, subtracted from the time left.
-inline void FormatTrackerText(const Tracker& t, const TrackerState& s, float elapsed,
+inline void FormatTrackerText(const Tracker& t, const TrackerState& s, float elapsed, const TrackerWords& words,
                               char* buf, size_t size) {
     if (!buf || size == 0) return;
     buf[0] = '\0';
     const DisplayParts parts = Decompose(static_cast<DisplayMode>(t.displayMode));
     const bool skill = static_cast<SourceMode>(t.source) == SourceMode::ActiveSkill;
 
-    char value[32] = "";
+    char value[64] = "";
     if (parts.text == TextPart::Value) {
-        if (skill && static_cast<SkillValue>(t.skillValue) == SkillValue::CanBeUsed)
-            std::snprintf(value, sizeof(value), "%s", (s.found && s.value != 0) ? "ready" : "not ready");
-        else
+        if (skill && static_cast<SkillValue>(t.skillValue) == SkillValue::CanBeUsed) {
+            std::snprintf(value, sizeof(value), "%s", (s.found && s.value != 0) ? words.ready : words.notReady);
+            DropIncompleteUtf8Tail(value);
+        } else
             std::snprintf(value, sizeof(value), "%d", s.found ? s.value : 0);
     }
 
-    char time[32] = "";
+    char time[64] = "";
     if (parts.time && !skill) {
         // Permanent wins over a timed match only when nothing timed matched.
         if (s.found && !s.timed && s.permanent) {
@@ -278,10 +303,13 @@ inline void FormatTrackerText(const Tracker& t, const TrackerState& s, float ela
         } else {
             float left = s.found ? s.timeLeft - std::max(0.0f, elapsed) : 0.0f;
             if (left < 0.0f) left = 0.0f;
-            if (left >= 60.0f)
+            if (left >= 60.0f) {
                 std::snprintf(time, sizeof(time), "%d:%02d", static_cast<int>(left) / 60, static_cast<int>(left) % 60);
-            else
-                std::snprintf(time, sizeof(time), "%.1fs", left);
+            } else {
+                char number[16];
+                std::snprintf(number, sizeof(number), "%.1f", left);
+                FillValue(time, sizeof(time), words.seconds, number);
+            }
         }
     }
 
@@ -291,6 +319,8 @@ inline void FormatTrackerText(const Tracker& t, const TrackerState& s, float ela
         std::snprintf(buf, size, "%s  %s", text, time);
     else
         std::snprintf(buf, size, "%s", text[0] ? text : time);
+    // A long custom text in a short buffer: never end inside a character.
+    DropIncompleteUtf8Tail(buf);
 }
 
 } // namespace BuffOverlay

@@ -12,10 +12,9 @@ using Microsoft::WRL::ComPtr;
 namespace BuffOverlay {
 namespace {
 
-std::string HrText(const char* what, HRESULT hr) {
-    char buf[96];
-    std::snprintf(buf, sizeof(buf), "%s (0x%08lX)", what, static_cast<unsigned long>(hr));
-    return buf;
+// A failure with its HRESULT: `key` (I18n::Key) names it, its text shows the {code}.
+LocText HrText(const char* key, HRESULT hr) {
+    return LocText{ key, { { "code", Num("0x%08lX", static_cast<unsigned long>(hr)) } } };
 }
 
 } // namespace
@@ -49,38 +48,37 @@ bool LoadIconTexture(ID3D11Device* device, const std::filesystem::path& path, Ic
     out.srv.Reset();
     out.width = out.height = 0;
     out.attemptedPath = path.wstring();
-    out.error.clear();
+    out.error = LocText{};
 
-    if (!device) { out.error = "The overlay has no graphics device yet"; return false; }
-    if (path.empty()) { out.error = "No icon file chosen"; return false; }
+    if (!device) { out.error = LocText{ I18n::Key("icon_error_no_device") }; return false; }
+    if (path.empty()) { out.error = LocText{ I18n::Key("icon_error_no_file") }; return false; }
     std::error_code ec;
-    if (!std::filesystem::is_regular_file(path, ec)) { out.error = "File not found"; return false; }
+    if (!std::filesystem::is_regular_file(path, ec)) { out.error = LocText{ I18n::Key("icon_error_not_found") }; return false; }
 
     // The render thread may already have COM in either apartment; both work for WIC.
     const HRESULT initHr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     const bool uninit = SUCCEEDED(initHr);
-    if (FAILED(initHr) && initHr != RPC_E_CHANGED_MODE) { out.error = HrText("COM unavailable", initHr); return false; }
+    if (FAILED(initHr) && initHr != RPC_E_CHANGED_MODE) { out.error = HrText(I18n::Key("icon_error_com"), initHr); return false; }
     struct ComGuard { bool on; ~ComGuard() { if (on) CoUninitialize(); } } guard{ uninit };
 
     ComPtr<IWICImagingFactory> factory;
     HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(factory.GetAddressOf()));
-    if (FAILED(hr)) { out.error = HrText("Image decoder unavailable", hr); return false; }
+    if (FAILED(hr)) { out.error = HrText(I18n::Key("icon_error_decoder"), hr); return false; }
 
     ComPtr<IWICBitmapDecoder> decoder;
     hr = factory->CreateDecoderFromFilename(path.c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, decoder.GetAddressOf());
-    if (FAILED(hr)) { out.error = HrText("Not a PNG, JPG or BMP image", hr); return false; }
+    if (FAILED(hr)) { out.error = HrText(I18n::Key("icon_error_not_image"), hr); return false; }
 
     ComPtr<IWICBitmapFrameDecode> frame;
     hr = decoder->GetFrame(0, frame.GetAddressOf());
-    if (FAILED(hr)) { out.error = HrText("Could not decode the image", hr); return false; }
+    if (FAILED(hr)) { out.error = HrText(I18n::Key("icon_error_decode"), hr); return false; }
 
     UINT w = 0, h = 0;
     hr = frame->GetSize(&w, &h);
-    if (FAILED(hr) || w == 0 || h == 0) { out.error = "The image has no size"; return false; }
+    if (FAILED(hr) || w == 0 || h == 0) { out.error = LocText{ I18n::Key("icon_error_no_size") }; return false; }
     if (w > kMaxIconPixels || h > kMaxIconPixels) {
-        char buf[96];
-        std::snprintf(buf, sizeof(buf), "Image is %ux%u; icons can be at most %ux%u", w, h, kMaxIconPixels, kMaxIconPixels);
-        out.error = buf;
+        out.error = LocText{ I18n::Key("icon_error_too_large"),
+                             { { "width", Num("%u", w) }, { "height", Num("%u", h) }, { "max", Num("%u", kMaxIconPixels) } } };
         return false;
     }
 
@@ -88,12 +86,12 @@ bool LoadIconTexture(ID3D11Device* device, const std::filesystem::path& path, Ic
     hr = factory->CreateFormatConverter(converter.GetAddressOf());
     if (SUCCEEDED(hr))
         hr = converter->Initialize(frame.Get(), GUID_WICPixelFormat32bppRGBA, WICBitmapDitherTypeNone, nullptr, 0.0, WICBitmapPaletteTypeCustom);
-    if (FAILED(hr)) { out.error = HrText("Could not convert the image", hr); return false; }
+    if (FAILED(hr)) { out.error = HrText(I18n::Key("icon_error_convert"), hr); return false; }
 
     const UINT stride = w * 4;
     std::vector<unsigned char> pixels(static_cast<size_t>(stride) * h);
     hr = converter->CopyPixels(nullptr, stride, static_cast<UINT>(pixels.size()), pixels.data());
-    if (FAILED(hr)) { out.error = HrText("Could not read the image pixels", hr); return false; }
+    if (FAILED(hr)) { out.error = HrText(I18n::Key("icon_error_pixels"), hr); return false; }
 
     D3D11_TEXTURE2D_DESC desc{};
     desc.Width = w;
@@ -110,14 +108,14 @@ bool LoadIconTexture(ID3D11Device* device, const std::filesystem::path& path, Ic
 
     ComPtr<ID3D11Texture2D> texture;
     hr = device->CreateTexture2D(&desc, &init, texture.GetAddressOf());
-    if (FAILED(hr)) { out.error = HrText("Could not create the texture", hr); return false; }
+    if (FAILED(hr)) { out.error = HrText(I18n::Key("icon_error_texture"), hr); return false; }
 
     D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc{};
     srvDesc.Format = desc.Format;
     srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Texture2D.MipLevels = 1;
     hr = device->CreateShaderResourceView(texture.Get(), &srvDesc, out.srv.GetAddressOf());
-    if (FAILED(hr)) { out.error = HrText("Could not create the texture view", hr); out.srv.Reset(); return false; }
+    if (FAILED(hr)) { out.error = HrText(I18n::Key("icon_error_texture_view"), hr); out.srv.Reset(); return false; }
 
     out.width = static_cast<int>(w);
     out.height = static_cast<int>(h);

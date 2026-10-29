@@ -42,7 +42,16 @@
     <ClInclude Include="src\Settings.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="src\Text.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\TextUtil.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="src\Tracker.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\lang_en.generated.h">
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="src\ui\SettingsExtras.h">

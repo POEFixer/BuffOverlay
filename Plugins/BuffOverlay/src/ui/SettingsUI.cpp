@@ -1,6 +1,7 @@
 // Buff Overlay — the plugin's tab in the host's Plugins window. One card per
 // topic: Overlay, Trackers, then the selected tracker's What to watch / What
 // to show / Look and position, and a collapsed Diagnostics card at the end.
+// Every text is a key of lang/en.json.
 #include "../BuffOverlayPlugin.h"
 
 #include "../../../../POEFixer/imgui/IconsFontAwesome6.h"
@@ -11,8 +12,8 @@
 #include <shellapi.h>
 
 #include <cfloat>
-#include <cstdio>
 #include <set>
+#include <string>
 
 namespace BuffOverlay {
 namespace {
@@ -20,13 +21,34 @@ namespace {
 namespace Ui = PluginUi;
 namespace Ux = UiExtra;
 
-constexpr const char* kSourceItems[] = { "A buff on your character", "An active skill" };
-constexpr const char* kMatchItems[] = { "Exact name", "Starts with", "Contains" };
-constexpr const char* kSkillValueItems[] = { "Use stage", "Total uses", "Available charges", "Max uses", "Ready to use" };
-constexpr const char* kCompareItems[] = { "Always", "Value =", "Value is not", "Value >", "Value >=", "Value <", "Value <=" };
-constexpr const char* kBoolItems[] = { "Always", "When ready", "When not ready" };
-constexpr const char* kTextItems[] = { "None", "Value", "Custom text" };
-constexpr const char* kMissingItems[] = { "Hide the tracker", "Show it with 0" };
+constexpr const char* kSourceItems[] = { I18n::Key("watch_source_buff"), I18n::Key("watch_source_skill") };
+constexpr const char* kMatchItems[] = { I18n::Key("watch_match_exact"), I18n::Key("watch_match_prefix"),
+                                        I18n::Key("watch_match_contains") };
+constexpr const char* kSkillValueItems[] = { I18n::Key("skill_value_stage"), I18n::Key("skill_value_total_uses"),
+                                             I18n::Key("skill_value_available"), I18n::Key("skill_value_max_uses"),
+                                             I18n::Key("skill_value_ready") };
+constexpr const char* kCompareItems[] = { I18n::Key("compare_always"), I18n::Key("compare_equal"),
+                                          I18n::Key("compare_not_equal"), I18n::Key("compare_greater"),
+                                          I18n::Key("compare_greater_equal"), I18n::Key("compare_less"),
+                                          I18n::Key("compare_less_equal") };
+constexpr const char* kBoolItems[] = { I18n::Key("compare_always"), I18n::Key("compare_when_ready"),
+                                       I18n::Key("compare_when_not_ready") };
+constexpr const char* kTextItems[] = { I18n::Key("show_text_none"), I18n::Key("show_text_value"),
+                                       I18n::Key("show_text_custom") };
+constexpr const char* kMissingItems[] = { I18n::Key("watch_missing_hide"), I18n::Key("watch_missing_zero") };
+
+// A combo whose items are keys, shown in the program language.
+template <size_t N>
+bool KeyCombo(const char* id, int& value, const char* const (&keys)[N]) {
+    const char* items[N];
+    for (size_t i = 0; i < N; ++i) items[i] = I18n::Tr(keys[i]);
+    return Ui::Combo(id, value, items, static_cast<int>(N));
+}
+
+// "<icon> <text>###<id>": a button whose id does not change with its text.
+std::string IconLabel(const char* icon, const char* text, const char* id) {
+    return std::string(icon) + " " + text + "###" + id;
+}
 
 bool EqualsNoCase(const std::wstring& a, const wchar_t* b) { return _wcsicmp(a.c_str(), b) == 0; }
 
@@ -35,6 +57,16 @@ void OpenFolder(const std::filesystem::path& dir) {
     std::filesystem::create_directories(dir, ec);
     // Opens Explorer and returns at once (no dialog on the overlay thread).
     ShellExecuteW(nullptr, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+// The tracker name field. The example tracker's shipped English name is shown in the
+// program language (display only); typing that shown text back stores the English again.
+bool LabelField(Tracker& t) {
+    const char* shownDefault = I18n::Tr("tracker_example_label");
+    std::string shown = t.label == kExampleTrackerLabel ? std::string(shownDefault) : t.label;
+    if (!Ux::InputStringMax("##label", I18n::Tr("watch_name_hint"), shown, kMaxTextLen)) return false;
+    t.label = shown == shownDefault ? std::string(kExampleTrackerLabel) : shown;
+    return true;
 }
 
 } // namespace
@@ -51,9 +83,8 @@ void BuffOverlayPlugin::DrawSettings() {
     // Arrange frames are kept behind this window (see DrawArrangeFrames).
     m_settingsWindowId = ImGui::GetCurrentWindow()->RootWindow->ID;
     m_settingsWindowContext = ImGui::GetCurrentContext();
-    if (!m_saveError.empty()) Ux::ColoredWrapped(Ui::Colors().Warning, m_saveError.c_str());
-    if (m_loadOrigin == LoadOrigin::Legacy)
-        Ui::Hint("Your trackers from the original Buff Overlay were imported into config/settings.json.");
+    if (m_saveError) Ux::ColoredWrapped(Ui::Colors().Warning, I18n::Tr(m_saveError));
+    if (m_loadOrigin == LoadOrigin::Legacy) Ui::Hint(I18n::Tr("notice_settings_imported"));
 
     DrawSectionGeneral();
     DrawSectionTrackerList();
@@ -73,31 +104,33 @@ void BuffOverlayPlugin::DrawSettings() {
 
 void BuffOverlayPlugin::DrawSectionGeneral() {
     Ui::BeginCard("##cardOverlay");
-    Ui::Heading(ICON_FA_EYE, "Overlay");
-    const Ui::LabelColumn col{ "Arrange on screen", "Text outline", "Opacity", "Status" };
+    Ui::Heading(ICON_FA_EYE, I18n::Tr("overlay_heading"));
+    const char* arrangeLabel = I18n::Tr("overlay_arrange");
+    const char* outline = I18n::Tr("overlay_outline");
+    const char* opacityLabel = I18n::Tr("overlay_opacity");
+    const char* status = I18n::Tr("overlay_status");
+    const Ui::LabelColumn col{ arrangeLabel, outline, opacityLabel, status };
 
-    col.RowNoWidth("Arrange on screen");
+    col.RowNoWidth(arrangeLabel);
     bool arrange = m_arrange;
     if (ImGui::Checkbox("##arrange", &arrange)) SetArrange(arrange);
-    Ui::Tip("Shows every enabled tracker with a frame, even when its buff is not active,\n"
-            "so you can drag it to where you want it. Works with the menu open or closed;\n"
-            "press Done at the top of the screen (or untick this) when finished.");
+    Ui::Tip(I18n::Tr("overlay_arrange_tip"));
 
-    col.RowNoWidth("Text outline");
+    col.RowNoWidth(outline);
     if (ImGui::Checkbox("##outline", &m_settings.textOutline)) MarkDirty(false);
-    Ui::Tip("Draws a thin dark outline around tracker text so it stays\nreadable on bright and dark parts of the map.");
+    Ui::Tip(I18n::Tr("overlay_outline_tip"));
 
-    col.Row("Opacity");
+    col.Row(opacityLabel);
     int opacity = static_cast<int>(std::floor(m_settings.opacity * 100.0f + 0.5f));
     if (ImGui::SliderInt("##opacity", &opacity, 10, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp)) {
         m_settings.opacity = static_cast<float>(opacity) / 100.0f;
         MarkDirty(false);
     }
-    Ui::Tip("How see-through every tracker is drawn (icons, text and backgrounds).");
+    Ui::Tip(I18n::Tr("overlay_opacity_tip"));
 
-    col.RowNoWidth("Status");
+    col.RowNoWidth(status);
     if (!m_inGame) {
-        Ui::Hint("Not in an area: trackers appear once you are in game.");
+        Ui::Hint(I18n::Tr("overlay_status_not_in_area"));
     } else {
         int enabled = 0, showing = 0;
         for (size_t i = 0; i < m_settings.trackers.size(); ++i) {
@@ -105,9 +138,8 @@ void BuffOverlayPlugin::DrawSectionGeneral() {
             ++enabled;
             if (i < m_states.size() && m_states[i].found) ++showing;
         }
-        char line[96];
-        std::snprintf(line, sizeof(line), "%d of %d enabled trackers match right now", showing, enabled);
-        Ux::ValueText(line);
+        Ux::ValueText(I18n::TrF("overlay_status_matching", { { "showing", Num("%d", showing) },
+                                                            { "enabled", Num("%d", enabled) } }).c_str());
     }
     Ui::EndCard();
     ImGui::Spacing();
@@ -115,12 +147,12 @@ void BuffOverlayPlugin::DrawSectionGeneral() {
 
 void BuffOverlayPlugin::DrawSectionTrackerList() {
     Ui::BeginCard("##cardTrackers");
-    Ui::Heading(ICON_FA_LIST, "Trackers");
+    Ui::Heading(ICON_FA_LIST, I18n::Tr("trackers_heading"));
     auto& trackers = m_settings.trackers;
     if (m_selected >= static_cast<int>(trackers.size())) m_selected = static_cast<int>(trackers.size()) - 1;
 
     if (trackers.empty()) {
-        Ui::Hint("No trackers yet. Add one, then choose the buff or skill it watches.");
+        Ui::Hint(I18n::Tr("trackers_none"));
     } else {
         const float em = ImGui::GetFontSize();
         // Cells padded so the checkbox and the texts keep clear of the table's border.
@@ -135,38 +167,37 @@ void BuffOverlayPlugin::DrawSectionTrackerList() {
         const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_ScrollY |
                                       ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_PadOuterX;
         if (ImGui::BeginTable("##trackerTable", patternColumn ? 3 : 2, flags, ImVec2(0.0f, height))) {
-            ImGui::TableSetupColumn("on", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFrameHeight());
-            ImGui::TableSetupColumn("name", ImGuiTableColumnFlags_WidthStretch, 0.55f);
-            if (patternColumn) ImGui::TableSetupColumn("pattern", ImGuiTableColumnFlags_WidthStretch, 0.45f);
+            // Column ids only: the table shows no header row.
+            ImGui::TableSetupColumn("##on", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFrameHeight());
+            ImGui::TableSetupColumn("##name", ImGuiTableColumnFlags_WidthStretch, 0.55f);
+            if (patternColumn) ImGui::TableSetupColumn("##pattern", ImGuiTableColumnFlags_WidthStretch, 0.45f);
             for (size_t i = 0; i < trackers.size(); ++i) {
                 Tracker& t = trackers[i];
                 ImGui::PushID(static_cast<int>(i));
                 ImGui::TableNextRow(ImGuiTableRowFlags_None, rowH);
                 ImGui::TableNextColumn();
                 if (ImGui::Checkbox("##on", &t.enabled)) MarkDirty();
-                Ui::Tip("Show this tracker on the overlay.");
+                Ui::Tip(I18n::Tr("trackers_enabled_tip"));
                 ImGui::TableNextColumn();
                 const bool active = m_inGame && i < m_states.size() && m_states[i].found;
                 const Ui::Palette pal = Ui::Colors();
                 Ux::StatusDot(!t.enabled ? pal.TextDisabled : active ? pal.Success : pal.TextSecondary);
-                Ui::Tip(!t.enabled ? "Disabled" : active ? "Matching right now" : "Not matching right now");
+                Ui::Tip(!t.enabled ? I18n::Tr("trackers_dot_disabled")
+                        : active   ? I18n::Tr("trackers_dot_matching")
+                                   : I18n::Tr("trackers_dot_not_matching"));
                 ImGui::SameLine();
-                const char* label = t.label.empty() ? "(unnamed tracker)" : t.label.c_str();
-                char id[300];
-                std::snprintf(id, sizeof(id), "%s###row", label);
+                const std::string id = std::string(ShownLabel(t, I18n::Tr("trackers_unnamed"))) + "###row";
                 ImGui::AlignTextToFramePadding();
                 // Selectable over the name column only, so the checkbox keeps its clicks.
-                if (ImGui::Selectable(id, m_selected == static_cast<int>(i), ImGuiSelectableFlags_None,
+                if (ImGui::Selectable(id.c_str(), m_selected == static_cast<int>(i), ImGuiSelectableFlags_None,
                                       ImVec2(0.0f, ImGui::GetFrameHeight())))
                     m_selected = static_cast<int>(i);
-                const char* pattern = t.pattern.empty() ? "no name set" : t.pattern.c_str();
+                const char* pattern = t.pattern.empty() ? I18n::Tr("trackers_no_pattern") : t.pattern.c_str();
                 if (patternColumn) {
                     ImGui::TableNextColumn();
                     Ux::TextEllipsis(pattern, Ui::Colors().TextSecondary);
                 }
-                char watches[300];
-                std::snprintf(watches, sizeof(watches), "Watches: %s", pattern);
-                Ui::Tip(watches);
+                Ui::Tip(I18n::TrF("trackers_watches", { { "name", pattern } }).c_str());
                 ImGui::PopID();
             }
             ImGui::EndTable();
@@ -176,11 +207,9 @@ void BuffOverlayPlugin::DrawSectionTrackerList() {
 
     const bool full = trackers.size() >= kMaxTrackers;
     ImGui::BeginDisabled(full);
-    if (ImGui::Button(ICON_FA_PLUS " Add tracker###add")) {
+    if (ImGui::Button(IconLabel(ICON_FA_PLUS, I18n::Tr("trackers_add"), "add").c_str())) {
         Tracker t;
-        char name[32];
-        std::snprintf(name, sizeof(name), "Tracker %zu", trackers.size() + 1);
-        t.label = name;
+        t.label = I18n::TrF("trackers_new_name", { { "number", Num("%zu", trackers.size() + 1) } });
         const ImVec2 d = GameScreenSize();
         t.x = std::floor(d.x * 0.5f) + static_cast<float>((trackers.size() % 8) * 24);
         t.y = std::floor(d.y * 0.4f) + static_cast<float>((trackers.size() % 8) * 24);
@@ -191,15 +220,18 @@ void BuffOverlayPlugin::DrawSectionTrackerList() {
         MarkDirty();
     }
     ImGui::EndDisabled();
-    if (full) Ui::Tip("At most 64 trackers.");
+    if (full) Ui::Tip(I18n::TrF("trackers_max", { { "count", Num("%zu", kMaxTrackers) } }).c_str());
 
     const bool haveSel = m_selected >= 0 && m_selected < static_cast<int>(trackers.size());
-    const char* dupLabel = ICON_FA_COPY " Duplicate###dup";
-    Ux::SameLineOrWrap(Ui::ButtonWidth(dupLabel));
+    const std::string dupLabel = IconLabel(ICON_FA_COPY, I18n::Tr("trackers_duplicate"), "dup");
+    Ux::SameLineOrWrap(Ui::ButtonWidth(dupLabel.c_str()));
     ImGui::BeginDisabled(!haveSel || full);
-    if (Ui::SubtleButton(dupLabel) && haveSel) {
+    if (Ui::SubtleButton(dupLabel.c_str()) && haveSel) {
         Tracker copy = trackers[static_cast<size_t>(m_selected)];
-        copy.label += " (copy)";
+        // The copy's name is the user's own text from now on, in the language shown.
+        const std::string base = ShownLabel(copy, "");
+        copy.label = base.empty() ? std::string(I18n::Tr("trackers_copy_suffix"))
+                                  : base + " " + I18n::Tr("trackers_copy_suffix");
         copy.x = std::min(copy.x + 24.0f, kMaxCoord);
         copy.y = std::min(copy.y + 24.0f, kMaxCoord);
         Sanitize(copy);
@@ -209,17 +241,18 @@ void BuffOverlayPlugin::DrawSectionTrackerList() {
         MarkDirty();
     }
     ImGui::EndDisabled();
-    Ui::Tip("Adds a copy of the selected tracker right below it.");
+    Ui::Tip(I18n::Tr("trackers_duplicate_tip"));
 
-    const char* removeLabel = ICON_FA_TRASH " Remove###remove";
-    Ux::SameLineOrWrap(Ui::ButtonWidth(removeLabel));
+    const std::string removeLabel = IconLabel(ICON_FA_TRASH, I18n::Tr("trackers_remove"), "remove");
+    Ux::SameLineOrWrap(Ui::ButtonWidth(removeLabel.c_str()));
     ImGui::BeginDisabled(!haveSel);
-    if (Ui::SubtleButton(removeLabel)) ImGui::OpenPopup("##confirmRemove");
+    if (Ui::SubtleButton(removeLabel.c_str())) ImGui::OpenPopup("##confirmRemove");
     ImGui::EndDisabled();
-    char question[300] = "Remove this tracker?";
-    if (haveSel)
-        std::snprintf(question, sizeof(question), "Remove \"%s\"?", trackers[static_cast<size_t>(m_selected)].label.c_str());
-    if (Ui::ConfirmPopup("##confirmRemove", question, "Remove", "Cancel") && haveSel) {
+    const std::string question =
+        haveSel ? I18n::TrF("trackers_remove_question",
+                            { { "name", ShownLabel(trackers[static_cast<size_t>(m_selected)], I18n::Tr("trackers_unnamed")) } })
+                : std::string(I18n::Tr("trackers_remove_this"));
+    if (Ui::ConfirmPopup("##confirmRemove", question.c_str(), I18n::Tr("trackers_remove"), nullptr) && haveSel) {
         trackers.erase(trackers.begin() + m_selected);
         if (m_selected >= static_cast<int>(trackers.size())) m_selected = static_cast<int>(trackers.size()) - 1;
         EvaluateTrackers();
@@ -231,93 +264,90 @@ void BuffOverlayPlugin::DrawSectionTrackerList() {
 
 void BuffOverlayPlugin::DrawSectionWatch(Tracker& t) {
     Ui::BeginCard("##cardWatch");
-    Ui::Heading(ICON_FA_MAGNIFYING_GLASS, "What to watch");
+    Ui::Heading(ICON_FA_MAGNIFYING_GLASS, I18n::Tr("watch_heading"));
     const bool skill = static_cast<SourceMode>(t.source) == SourceMode::ActiveSkill;
-    const Ui::LabelColumn col{ "Tracker name", "Watch", "Name to find", "Match", "Skill value", "Show when",
-                               "Compare with", "Several matches", "When not found" };
+    const char* name = I18n::Tr("watch_tracker_name");
+    const char* watch = I18n::Tr("watch_source");
+    const char* find = I18n::Tr("watch_pattern");
+    const char* match = I18n::Tr("watch_match");
+    const char* skillValue = I18n::Tr("watch_skill_value");
+    const char* showWhen = I18n::Tr("watch_show_when");
+    const char* compareWith = I18n::Tr("watch_compare_with");
+    const char* several = I18n::Tr("watch_several");
+    const char* notFound = I18n::Tr("watch_not_found");
+    const Ui::LabelColumn col{ name, watch, find, match, skillValue, showWhen, compareWith, several, notFound };
 
-    col.Row("Tracker name");
-    if (Ux::InputStringMax("##label", "e.g. Ancestral Bond", t.label, kMaxTextLen)) MarkDirty(false);
-    Ui::Tip("Your name for this tracker. Shown in the list and in arrange mode.");
+    col.Row(name);
+    if (LabelField(t)) MarkDirty(false);
+    Ui::Tip(I18n::Tr("watch_tracker_name_tip"));
 
-    col.Row("Watch");
-    if (Ui::Combo("##source", t.source, kSourceItems, 2)) { Sanitize(t); MarkDirty(); }
-    Ui::Tip("A buff: anything listed on your character's buff bar, including charges\n"
-            "and stacks. An active skill: a skill's state, such as its stage or\n"
-            "remaining uses.");
+    col.Row(watch);
+    if (KeyCombo("##source", t.source, kSourceItems)) { Sanitize(t); MarkDirty(); }
+    Ui::Tip(I18n::Tr("watch_source_tip"));
 
-    col.RowNoWidth("Name to find");
-    const char* pickLabel = ICON_FA_LIST " Pick###pick";
-    const float pickW = Ui::ButtonWidth(pickLabel);
+    col.RowNoWidth(find);
+    const std::string pickLabel = IconLabel(ICON_FA_LIST, I18n::Tr("watch_pick"), "pick");
+    const float pickW = Ui::ButtonWidth(pickLabel.c_str());
     ImGui::SetNextItemWidth(std::max(ImGui::GetFontSize() * 4.0f,
                                      Ux::FieldWidth() - pickW - ImGui::GetStyle().ItemSpacing.x));
-    if (Ux::InputStringMax("##pattern", skill ? "skill id" : "buff id, e.g. totem_ancestral_bond_reservation_",
+    if (Ux::InputStringMax("##pattern", skill ? I18n::Tr("watch_pattern_hint_skill") : I18n::Tr("watch_pattern_hint_buff"),
                            t.pattern, kMaxTextLen))
         MarkDirty();
-    Ui::Tip("The game's internal name of the buff or skill (not the name shown in\n"
-            "game). Use Pick to choose from what is active on your character now.");
+    Ui::Tip(I18n::Tr("watch_pattern_tip"));
     ImGui::SameLine();
-    if (Ui::SubtleButton(pickLabel)) {
+    if (Ui::SubtleButton(pickLabel.c_str())) {
         ImGui::OpenPopup("##patternPicker");
         WantLists();
         m_forceSample = true;
     }
-    Ui::Tip("Lists the buffs (or skills) active on your character right now.");
+    Ui::Tip(I18n::Tr("watch_pick_tip"));
     DrawPatternPicker(t);
 
-    col.Row("Match");
-    if (Ui::Combo("##match", t.matchMode, kMatchItems, 3)) MarkDirty();
-    Ui::Tip("Exact name: the whole name must be equal.\n"
-            "Starts with: for names that end in a changing number, such as\n"
-            "totem_ancestral_bond_reservation_79: enter the part before the number.\n"
-            "Contains: the text may appear anywhere in the name.\n"
-            "Upper and lower case must match.");
+    col.Row(match);
+    if (KeyCombo("##match", t.matchMode, kMatchItems)) MarkDirty();
+    Ui::Tip(I18n::Tr("watch_match_tip"));
 
     ImGui::BeginDisabled(!skill);
-    col.Row("Skill value");
-    if (Ui::Combo("##skillValue", t.skillValue, kSkillValueItems, 5)) {
+    col.Row(skillValue);
+    if (KeyCombo("##skillValue", t.skillValue, kSkillValueItems)) {
         // Switching to/from the yes/no value: reset a numeric condition it cannot use.
         t.stageCompare = static_cast<int>(StageCompare::Any);
         t.stageValue = 0;
         MarkDirty();
     }
-    Ui::Tip("Which number of the skill the tracker shows and tests.\n"
-            "Available charges = max uses minus uses on cooldown.\n"
-            "Ready to use = yes when the skill can be used now.");
+    Ui::Tip(I18n::Tr("watch_skill_value_tip"));
 
     const bool boolValue = static_cast<SkillValue>(t.skillValue) == SkillValue::CanBeUsed;
-    col.Row("Show when");
+    col.Row(showWhen);
     if (boolValue) {
         int b = 0;
         if (t.stageCompare == static_cast<int>(StageCompare::Equal)) b = t.stageValue != 0 ? 1 : 2;
-        if (Ui::Combo("##boolCond", b, kBoolItems, 3)) {
+        if (KeyCombo("##boolCond", b, kBoolItems)) {
             t.stageCompare = b == 0 ? static_cast<int>(StageCompare::Any) : static_cast<int>(StageCompare::Equal);
             t.stageValue = b == 1 ? 1 : 0;
             MarkDirty();
         }
     } else {
-        if (Ui::Combo("##cond", t.stageCompare, kCompareItems, 7)) MarkDirty();
+        if (KeyCombo("##cond", t.stageCompare, kCompareItems)) MarkDirty();
     }
-    Ui::Tip("The tracker counts as found only while the skill value meets this\n"
-            "condition; otherwise the When not found rule applies.");
+    Ui::Tip(I18n::Tr("watch_show_when_tip"));
 
     ImGui::BeginDisabled(boolValue || t.stageCompare == static_cast<int>(StageCompare::Any));
-    col.Row("Compare with");
+    col.Row(compareWith);
     if (ImGui::InputInt("##condValue", &t.stageValue)) MarkDirty();
     ImGui::EndDisabled();
     ImGui::EndDisabled();
-    if (!skill) Ui::Tip("Only for active skills.");
+    if (!skill) Ui::Tip(I18n::Tr("watch_only_skills"));
 
     ImGui::BeginDisabled(skill);
-    col.RowNoWidth("Several matches");
-    if (ImGui::Checkbox("Add up their charges###sum", &t.sumCharges)) MarkDirty();
-    Ui::Tip("When more than one buff matches, show the sum of their charges.\n"
-            "Off: show the first matching buff only.");
+    col.RowNoWidth(several);
+    if (ImGui::Checkbox(I18n::TrId("watch_sum_charges"), &t.sumCharges)) MarkDirty();
+    Ui::Tip(I18n::Tr("watch_sum_charges_tip"));
     ImGui::EndDisabled();
 
-    col.Row("When not found");
-    if (Ui::Combo("##missing", t.missingMode, kMissingItems, 2)) MarkDirty(false);
-    Ui::Tip("What the overlay shows while the buff is absent (or the skill\ncondition is not met).");
+    col.Row(notFound);
+    if (KeyCombo("##missing", t.missingMode, kMissingItems)) MarkDirty(false);
+    Ui::Tip(I18n::Tr("watch_not_found_tip"));
     Ui::EndCard();
     ImGui::Spacing();
 }
@@ -329,15 +359,15 @@ void BuffOverlayPlugin::DrawPatternPicker(Tracker& t) {
     WantLists();
     const bool skill = static_cast<SourceMode>(t.source) == SourceMode::ActiveSkill;
     if (!m_inGame) {
-        ImGui::TextDisabled("Enter an area in game to list your %s.", skill ? "skills" : "buffs");
+        ImGui::TextDisabled("%s", skill ? I18n::Tr("picker_enter_area_skills") : I18n::Tr("picker_enter_area_buffs"));
     } else {
         std::set<std::string> names;
         if (skill) for (const auto& s : m_skills) { if (!s.name.empty()) names.insert(s.name); }
         else       for (const auto& b : m_buffs)  { if (!b.name.empty()) names.insert(b.name); }
         if (names.empty()) {
-            ImGui::TextDisabled("Nothing active right now.");
+            ImGui::TextDisabled("%s", I18n::Tr("picker_nothing_active"));
         } else {
-            ImGui::TextDisabled("Click a name to use it.");
+            ImGui::TextDisabled("%s", I18n::Tr("picker_click_name"));
             for (const std::string& n : names) {
                 if (ImGui::Selectable(n.c_str())) {
                     std::string prefix;
@@ -348,7 +378,7 @@ void BuffOverlayPlugin::DrawPatternPicker(Tracker& t) {
                         t.pattern = n;
                         t.matchMode = static_cast<int>(MatchMode::Exact);
                     }
-                    if (t.pattern.size() > kMaxTextLen) t.pattern.resize(kMaxTextLen);
+                    Utf8Truncate(t.pattern, kMaxTextLen);
                     MarkDirty();
                     ImGui::CloseCurrentPopup();
                 }
@@ -360,29 +390,34 @@ void BuffOverlayPlugin::DrawPatternPicker(Tracker& t) {
 
 void BuffOverlayPlugin::DrawSectionShow(Tracker& t) {
     Ui::BeginCard("##cardShow");
-    Ui::Heading(ICON_FA_TAGS, "What to show");
+    Ui::Heading(ICON_FA_TAGS, I18n::Tr("show_heading"));
     const bool skill = static_cast<SourceMode>(t.source) == SourceMode::ActiveSkill;
     DisplayParts parts = Decompose(static_cast<DisplayMode>(t.displayMode));
     bool partsChanged = false;
-    const Ui::LabelColumn col{ "Icon", "Text", "Time left", "Custom text", "Icon file", "Icon size", "Preview" };
+    const char* icon = I18n::Tr("show_icon");
+    const char* textLabel = I18n::Tr("show_text");
+    const char* timeLeft = I18n::Tr("show_time_left");
+    const char* custom = I18n::Tr("show_custom_text");
+    const char* iconFile = I18n::Tr("show_icon_file");
+    const char* iconSize = I18n::Tr("show_icon_size");
+    const char* preview = I18n::Tr("show_preview");
+    const Ui::LabelColumn col{ icon, textLabel, timeLeft, custom, iconFile, iconSize, preview };
 
-    col.RowNoWidth("Icon");
+    col.RowNoWidth(icon);
     partsChanged |= ImGui::Checkbox("##icon", &parts.icon);
-    Ui::Tip("Show a picture of your choice before the text.");
+    Ui::Tip(I18n::Tr("show_icon_tip"));
 
-    col.Row("Text");
+    col.Row(textLabel);
     int text = static_cast<int>(parts.text);
-    if (Ui::Combo("##text", text, kTextItems, 3)) { parts.text = static_cast<TextPart>(text); partsChanged = true; }
-    Ui::Tip("Value: the buff's charges or stacks (for a skill, the chosen\nskill value). Custom text: your own word, such as BOND.");
+    if (KeyCombo("##text", text, kTextItems)) { parts.text = static_cast<TextPart>(text); partsChanged = true; }
+    Ui::Tip(I18n::Tr("show_text_tip"));
 
     ImGui::BeginDisabled(skill);
-    col.RowNoWidth("Time left");
+    col.RowNoWidth(timeLeft);
     bool time = parts.time && !skill;
     if (ImGui::Checkbox("##time", &time)) { parts.time = time; partsChanged = true; }
     ImGui::EndDisabled();
-    Ui::Tip(skill ? "Active skills have no duration." :
-                    "Seconds until the buff ends (minutes:seconds above a minute).\n"
-                    "Buffs without a duration show an infinity sign.");
+    Ui::Tip(skill ? I18n::Tr("show_time_left_skill_tip") : I18n::Tr("show_time_left_tip"));
 
     if (partsChanged) {
         t.displayMode = static_cast<int>(Compose(parts));
@@ -392,21 +427,20 @@ void BuffOverlayPlugin::DrawSectionShow(Tracker& t) {
     }
 
     ImGui::BeginDisabled(parts.text != TextPart::Custom);
-    col.Row("Custom text");
-    if (Ux::InputStringMax("##custom", "e.g. BOND", t.customText, kMaxTextLen)) MarkDirty(false);
+    col.Row(custom);
+    if (Ux::InputStringMax("##custom", I18n::Tr("show_custom_hint"), t.customText, kMaxTextLen)) MarkDirty(false);
     ImGui::EndDisabled();
 
     ImGui::BeginDisabled(!parts.icon);
-    col.RowNoWidth("Icon file");
-    const char* chooseLabel = ICON_FA_FOLDER_OPEN " Choose###chooseIcon";
-    const float chooseW = Ui::ButtonWidth(chooseLabel);
+    col.RowNoWidth(iconFile);
+    const std::string chooseLabel = IconLabel(ICON_FA_FOLDER_OPEN, I18n::Tr("show_choose"), "chooseIcon");
+    const float chooseW = Ui::ButtonWidth(chooseLabel.c_str());
     ImGui::SetNextItemWidth(std::max(ImGui::GetFontSize() * 4.0f,
                                      Ux::FieldWidth() - chooseW - ImGui::GetStyle().ItemSpacing.x));
     if (Ux::InputStringMax("##iconPath", "icons/my_icon.png", t.iconPath, kMaxPathLen)) MarkDirty(false);
-    Ui::Tip("A PNG, JPG or BMP file (at most 1024 x 1024). Put files into the\n"
-            "plugin's icons folder and pick them with Choose, or enter a full path.");
+    Ui::Tip(I18n::Tr("show_icon_file_tip"));
     ImGui::SameLine();
-    if (Ui::SubtleButton(chooseLabel)) {
+    if (Ui::SubtleButton(chooseLabel.c_str())) {
         ScanIconFolder();
         ImGui::OpenPopup("##iconPicker");
     }
@@ -417,29 +451,34 @@ void BuffOverlayPlugin::DrawSectionShow(Tracker& t) {
         Ux::Indent(col);
         if (tex && tex->srv) {
             ImGui::AlignTextToFramePadding();
-            ImGui::TextDisabled("Loaded, %d x %d", tex->width, tex->height);
+            ImGui::TextDisabled("%s", I18n::TrF("show_icon_loaded", { { "width", Num("%d", tex->width) },
+                                                                     { "height", Num("%d", tex->height) } }).c_str());
         } else if (tex) {
             ImGui::AlignTextToFramePadding();
+            const std::string error =
+                tex->error.Empty() ? std::string(I18n::Tr("show_icon_not_loaded")) : Render(tex->error);
             ImGui::PushStyleColor(ImGuiCol_Text, Ui::Colors().Warning);
-            ImGui::TextUnformatted(tex->error.empty() ? "Not loaded" : tex->error.c_str());
+            ImGui::TextUnformatted(error.c_str());
             ImGui::PopStyleColor();
         }
-        Ux::SameLineOrWrap(col, Ui::ButtonWidth("Reload###reloadIcon"));
-        if (Ui::SubtleButton("Reload###reloadIcon")) {
+        const char* reloadLabel = I18n::TrId("show_reload");
+        Ux::SameLineOrWrap(col, Ui::ButtonWidth(reloadLabel));
+        if (Ui::SubtleButton(reloadLabel)) {
             if (auto it = m_icons.find(t.iconPath); it != m_icons.end()) {
                 RetireIcon(it->second);   // may be queued in this frame already
                 m_icons.erase(it);
             }
         }
-        Ui::Tip("Reads the file again, e.g. after you replaced the picture.");
+        Ui::Tip(I18n::Tr("show_reload_tip"));
     }
 
-    col.Row("Icon size");
-    if (ImGui::SliderFloat("##iconSize", &t.iconSize, kMinIconSize, kMaxIconSize, "%.0f px", ImGuiSliderFlags_AlwaysClamp))
+    col.Row(iconSize);
+    if (ImGui::SliderFloat("##iconSize", &t.iconSize, kMinIconSize, kMaxIconSize,
+                           UnitFormat(I18n::Tr("unit_pixels"), "%.0f").c_str(), ImGuiSliderFlags_AlwaysClamp))
         MarkDirty(false);
     ImGui::EndDisabled();
 
-    col.RowNoWidth("Preview");
+    col.RowNoWidth(preview);
     DrawPreview(t, static_cast<size_t>(m_selected));
     Ui::EndCard();
     ImGui::Spacing();
@@ -469,8 +508,7 @@ void BuffOverlayPlugin::DrawIconPicker(Tracker& t) {
     if (!ImGui::BeginPopup("##iconPicker")) return;
     if (m_iconFiles.empty()) {
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 22.0f);
-        ImGui::TextDisabled(m_iconFolderMissing ? "The icons folder does not exist yet. Open it, copy PNG, JPG or BMP files into it, then press Choose again."
-                                                : "No PNG, JPG or BMP files in the icons folder yet.");
+        ImGui::TextDisabled("%s", m_iconFolderMissing ? I18n::Tr("icons_folder_missing") : I18n::Tr("icons_folder_empty"));
         ImGui::PopTextWrapPos();
     } else {
         for (const std::string& f : m_iconFiles) {
@@ -482,7 +520,7 @@ void BuffOverlayPlugin::DrawIconPicker(Tracker& t) {
         }
     }
     ImGui::Separator();
-    if (Ui::SubtleButton(ICON_FA_FOLDER_OPEN " Open icons folder###openIcons")) {
+    if (Ui::SubtleButton(IconLabel(ICON_FA_FOLDER_OPEN, I18n::Tr("icons_open_folder"), "openIcons").c_str())) {
         OpenFolder(DirectoryPath() / L"icons");
         ImGui::CloseCurrentPopup();
     }
@@ -507,71 +545,76 @@ void BuffOverlayPlugin::DrawPreview(const Tracker& t, size_t index) {
     dl->AddRectFilled(p, ImVec2(p.x + box.x, p.y + box.y), IM_COL32(18, 18, 22, 235), ImGui::GetStyle().FrameRounding);
     DrawVisual(dl, t, v, ImVec2(p.x + pad, p.y + pad), scale, s.found ? 1.0f : 0.6f);
     ImGui::Dummy(box);
-    Ui::Tip(s.found ? "Live: this is what the overlay shows now." :
-                      "Not active right now; shown dimmed the way it will look.");
+    Ui::Tip(s.found ? I18n::Tr("show_preview_live") : I18n::Tr("show_preview_dimmed"));
 }
 
 void BuffOverlayPlugin::DrawSectionLook(Tracker& t) {
     Ui::BeginCard("##cardLook");
-    Ui::Heading(ICON_FA_PALETTE, "Look and position");
-    const Ui::LabelColumn col{ "Text size", "Text colour", "Background", "Position" };
+    Ui::Heading(ICON_FA_PALETTE, I18n::Tr("look_heading"));
+    const char* textSize = I18n::Tr("look_text_size");
+    const char* textColour = I18n::Tr("look_text_colour");
+    const char* background = I18n::Tr("look_background");
+    const char* position = I18n::Tr("look_position");
+    const Ui::LabelColumn col{ textSize, textColour, background, position };
 
-    col.Row("Text size");
+    col.Row(textSize);
     if (ImGui::SliderFloat("##fontScale", &t.fontScale, kMinFontScale, kMaxFontScale, "%.1fx", ImGuiSliderFlags_AlwaysClamp))
         MarkDirty(false);
-    Ui::Tip("Text height as a multiple of the menu font.");
+    Ui::Tip(I18n::Tr("look_text_size_tip"));
 
-    col.RowNoWidth("Text colour");
+    col.RowNoWidth(textColour);
     if (Ui::Swatch("##color", &t.color.r)) MarkDirty(false);
 
-    col.RowNoWidth("Background");
+    col.RowNoWidth(background);
     if (ImGui::Checkbox("##bg", &t.textBackground)) MarkDirty(false);
-    Ui::Tip("A rounded panel behind the text.");
+    Ui::Tip(I18n::Tr("look_background_tip"));
     ImGui::SameLine();
     if (Ux::SwatchDimmable("##bgColor", &t.backgroundColor.r, !t.textBackground)) MarkDirty(false);
 
-    col.Row("Position");
+    col.Row(position);
     float pos[2] = { t.x, t.y };
     if (ImGui::DragFloat2("##pos", pos, 1.0f, 0.0f, kMaxCoord, "%.0f", ImGuiSliderFlags_AlwaysClamp)) {
         t.x = std::floor(pos[0] + 0.5f);
         t.y = std::floor(pos[1] + 0.5f);
         MarkDirty(false);
     }
-    Ui::Tip("Top-left corner in screen pixels (X, Y). Drag the numbers, type\nthem, or use Arrange on screen to drag the tracker itself.");
+    Ui::Tip(I18n::Tr("look_position_tip"));
 
     Ux::Indent(col);
-    if (Ui::SubtleButton(ICON_FA_CROSSHAIRS " Center on screen###center")) {
+    if (Ui::SubtleButton(IconLabel(ICON_FA_CROSSHAIRS, I18n::Tr("look_center"), "center").c_str())) {
         const ImVec2 d = GameScreenSize();
         t.x = std::floor(d.x * 0.5f);
         t.y = std::floor(d.y * 0.5f);
         MarkDirty(false);
     }
-    const char* arrangeLabel = m_arrange ? ICON_FA_CHECK " Done arranging###arr" : ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT " Arrange on screen###arr";
-    Ux::SameLineOrWrap(col, Ui::ButtonWidth(arrangeLabel));
-    if (Ui::SubtleButton(arrangeLabel)) SetArrange(!m_arrange);
+    const std::string arrangeLabel = m_arrange
+        ? IconLabel(ICON_FA_CHECK, I18n::Tr("look_done_arranging"), "arr")
+        : IconLabel(ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT, I18n::Tr("overlay_arrange"), "arr");
+    Ux::SameLineOrWrap(col, Ui::ButtonWidth(arrangeLabel.c_str()));
+    if (Ui::SubtleButton(arrangeLabel.c_str())) SetArrange(!m_arrange);
     Ui::EndCard();
     ImGui::Spacing();
 }
 
 void BuffOverlayPlugin::DrawSectionDiagnostics() {
-    if (Ui::BeginDiagnostics("The buffs and active skills the overlay sees on your character, and the settings file.")) {
+    if (Ui::BeginDiagnostics(I18n::Tr("diag_tip"))) {
         WantLists();
         if (!m_inGame) {
-            Ui::Hint("Enter an area in game to see your active buffs and skills.");
+            Ui::Hint(I18n::Tr("diag_not_in_area"));
         } else {
-            Ui::Hint("Everything the overlay can see on your character right now. Click a name to copy it.");
+            Ui::Hint(I18n::Tr("diag_hint"));
             const float rowH = ImGui::GetTextLineHeightWithSpacing();
+            // Fixed columns of width 0 fit their translated header and their cells every frame.
             const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter |
                                           ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_PadOuterX;
-            auto numW = [](const char* header) { return ImGui::CalcTextSize(header).x + ImGui::GetStyle().CellPadding.x * 2.0f; };
 
-            ImGui::Text("Buffs (%zu)", m_buffs.size());
+            ImGui::TextUnformatted(I18n::TrF("diag_buffs", { { "count", Num("%zu", m_buffs.size()) } }).c_str());
             const int bRows = std::clamp(static_cast<int>(m_buffs.size()), 1, 10) + 1;
             if (ImGui::BeginTable("##diagBuffs", 3, flags, ImVec2(0.0f, rowH * static_cast<float>(bRows) + rowH * 0.5f))) {
                 ImGui::TableSetupScrollFreeze(0, 1);
-                ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
-                ImGui::TableSetupColumn("Charges", ImGuiTableColumnFlags_WidthFixed, numW("Charges"));
-                ImGui::TableSetupColumn("Time left", ImGuiTableColumnFlags_WidthFixed, numW("Time left"));
+                ImGui::TableSetupColumn(I18n::TrId("diag_col_name"), ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableSetupColumn(I18n::TrId("diag_col_charges"), ImGuiTableColumnFlags_WidthFixed, 0.0f);
+                ImGui::TableSetupColumn(I18n::TrId("diag_col_time_left"), ImGuiTableColumnFlags_WidthFixed, 0.0f);
                 ImGui::TableHeadersRow();
                 const float elapsed = SecondsSinceSample();
                 for (size_t i = 0; i < m_buffs.size(); ++i) {
@@ -585,36 +628,37 @@ void BuffOverlayPlugin::DrawSectionDiagnostics() {
                     ImGui::Text("%d", b.charges);
                     ImGui::TableNextColumn();
                     if (IsPermanent(b)) ImGui::TextUnformatted(ICON_FA_INFINITY);
-                    else ImGui::Text("%.1f s", std::max(0.0f, b.timeLeft - elapsed));
+                    else ImGui::TextUnformatted(I18n::TrF("unit_seconds", { { "value", Num("%.1f", std::max(0.0f, b.timeLeft - elapsed)) } }).c_str());
                     ImGui::PopID();
                 }
                 ImGui::EndTable();
             }
 
             ImGui::Spacing();
-            ImGui::Text("Active skills (%zu)", m_skills.size());
+            ImGui::TextUnformatted(I18n::TrF("diag_skills", { { "count", Num("%zu", m_skills.size()) } }).c_str());
             const int sRows = std::clamp(static_cast<int>(m_skills.size()), 1, 10) + 1;
             if (ImGui::BeginTable("##diagSkills", 6, flags, ImVec2(0.0f, rowH * static_cast<float>(sRows) + rowH * 0.5f))) {
                 ImGui::TableSetupScrollFreeze(0, 1);
-                ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
-                ImGui::TableSetupColumn("Stage", ImGuiTableColumnFlags_WidthFixed, numW("Stage"));
-                ImGui::TableSetupColumn("Uses", ImGuiTableColumnFlags_WidthFixed, numW("Uses"));
-                ImGui::TableSetupColumn("Available", ImGuiTableColumnFlags_WidthFixed, numW("Available"));
-                ImGui::TableSetupColumn("Max", ImGuiTableColumnFlags_WidthFixed, numW("Max"));
-                ImGui::TableSetupColumn("Ready", ImGuiTableColumnFlags_WidthFixed, numW("Ready"));
+                ImGui::TableSetupColumn(I18n::TrId("diag_col_name"), ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableSetupColumn(I18n::TrId("diag_col_stage"), ImGuiTableColumnFlags_WidthFixed, 0.0f);
+                ImGui::TableSetupColumn(I18n::TrId("diag_col_uses"), ImGuiTableColumnFlags_WidthFixed, 0.0f);
+                ImGui::TableSetupColumn(I18n::TrId("diag_col_available"), ImGuiTableColumnFlags_WidthFixed, 0.0f);
+                ImGui::TableSetupColumn(I18n::TrId("diag_col_max"), ImGuiTableColumnFlags_WidthFixed, 0.0f);
+                ImGui::TableSetupColumn(I18n::TrId("diag_col_ready"), ImGuiTableColumnFlags_WidthFixed, 0.0f);
                 ImGui::TableHeadersRow();
                 for (size_t i = 0; i < m_skills.size(); ++i) {
                     const SkillSample& k = m_skills[i];
                     ImGui::PushID(static_cast<int>(i));
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
-                    if (ImGui::Selectable(k.name.empty() ? "(no name)" : k.name.c_str(), false, ImGuiSelectableFlags_SpanAllColumns))
+                    if (ImGui::Selectable(k.name.empty() ? I18n::Tr("diag_no_name") : k.name.c_str(), false,
+                                          ImGuiSelectableFlags_SpanAllColumns))
                         ImGui::SetClipboardText(k.name.c_str());
                     ImGui::TableNextColumn(); ImGui::Text("%d", k.useStage);
                     ImGui::TableNextColumn(); ImGui::Text("%d", k.totalUses);
                     ImGui::TableNextColumn(); ImGui::Text("%d", SkillValueOf(k, SkillValue::AvailableCharges));
                     ImGui::TableNextColumn(); ImGui::Text("%d", k.maxUses);
-                    ImGui::TableNextColumn(); ImGui::TextUnformatted(k.canBeUsed ? "yes" : "no");
+                    ImGui::TableNextColumn(); ImGui::TextUnformatted(k.canBeUsed ? I18n::Tr("diag_yes") : I18n::Tr("diag_no"));
                     ImGui::PopID();
                 }
                 ImGui::EndTable();
@@ -622,10 +666,10 @@ void BuffOverlayPlugin::DrawSectionDiagnostics() {
         }
         ImGui::Spacing();
         ImGui::AlignTextToFramePadding();
-        ImGui::TextDisabled("Settings: config/settings.json");
-        const char* openLabel = ICON_FA_FOLDER_OPEN " Open folder###openCfg";
-        Ux::SameLineOrWrap(Ui::ButtonWidth(openLabel));
-        if (Ui::SubtleButton(openLabel)) OpenFolder(DirectoryPath() / L"config");
+        ImGui::TextDisabled("%s", I18n::TrF("diag_settings_file", { { "path", "config/settings.json" } }).c_str());
+        const std::string openLabel = IconLabel(ICON_FA_FOLDER_OPEN, I18n::Tr("diag_open_folder"), "openCfg");
+        Ux::SameLineOrWrap(Ui::ButtonWidth(openLabel.c_str()));
+        if (Ui::SubtleButton(openLabel.c_str())) OpenFolder(DirectoryPath() / L"config");
         Ui::EndDiagnostics();
     }
     ImGui::Spacing();

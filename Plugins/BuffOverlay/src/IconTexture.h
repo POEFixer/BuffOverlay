@@ -2,6 +2,8 @@
 // Component into a D3D11 texture the overlay can draw.
 #pragma once
 
+#include "Text.h"
+
 #include <d3d11.h>
 #include <wrl/client.h>
 
@@ -15,15 +17,16 @@ struct IconTexture {
     int width = 0;
     int height = 0;
     // The resolved path of the last load attempt (also kept on failure, so a
-    // broken path is not retried every frame) and why it failed.
+    // broken path is not retried every frame) and why it failed (translated
+    // where it is shown; empty: no failure).
     std::wstring attemptedPath;
-    std::string error;
+    LocText error;
 
     void Reset() {
         srv.Reset();
         width = height = 0;
         attemptedPath.clear();
-        error.clear();
+        error = LocText{};
     }
 };
 

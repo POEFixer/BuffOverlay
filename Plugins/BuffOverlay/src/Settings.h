@@ -44,7 +44,9 @@ bool SaveSettingsTo(const std::filesystem::path& dir, const Settings& s);
 // before the first save replaces it.
 void KeepUnreadableCopy(const std::filesystem::path& dir);
 
-// The example tracker a first start shows.
+// The example tracker a first start shows, and its name (stored in English; the
+// settings tab shows it in the program language while it is unchanged).
+constexpr const char* kExampleTrackerLabel = "Ancestral Bond charges";
 Tracker MakeExampleTracker();
 
 } // namespace BuffOverlay

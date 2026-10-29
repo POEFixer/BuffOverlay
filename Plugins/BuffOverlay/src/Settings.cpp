@@ -155,7 +155,7 @@ Tracker TrackerFromJson(const json& j) {
 
 Tracker MakeExampleTracker() {
     Tracker t;
-    t.label = "Ancestral Bond charges";
+    t.label = kExampleTrackerLabel;
     t.pattern = "totem_ancestral_bond_reservation_";
     t.matchMode = static_cast<int>(MatchMode::Prefix);
     t.displayMode = static_cast<int>(DisplayMode::Charges);

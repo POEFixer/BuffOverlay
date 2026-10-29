@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.4
+
+- Follows the program language (ten languages).
+- A long text typed in another alphabet (Cyrillic, Thai, Chinese) is no longer cut in the middle of a letter.
+
 ## 1.0.3
 
 - Works with the separate menu window (POEFixer 366): the host hands the plugin the right drawing context for its settings tab and for its overlay.

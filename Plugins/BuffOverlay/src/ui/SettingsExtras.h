@@ -7,6 +7,7 @@
 
 #include "../../../../POEFixer/plugin_sdk/PluginUi.h"
 #include "../../../../POEFixer/imgui/imgui_internal.h"
+#include "../TextUtil.h"
 
 #include <string>
 
@@ -53,10 +54,10 @@ inline void ValueText(const char* text) {
     ImGui::PopTextWrapPos();
 }
 
-// PluginUi::InputString, cut to maxLen bytes after an edit.
+// PluginUi::InputString, cut to maxLen bytes after an edit (on a character boundary).
 inline bool InputStringMax(const char* id, const char* hint, std::string& text, size_t maxLen) {
     const bool changed = PluginUi::InputString(id, hint, text);
-    if (changed && text.size() > maxLen) text.resize(maxLen);
+    if (changed && text.size() > maxLen) Utf8Truncate(text, maxLen);
     return changed;
 }
 
