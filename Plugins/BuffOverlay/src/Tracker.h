@@ -153,6 +153,36 @@ inline bool Matches(const std::string& name, const std::string& pattern, MatchMo
     return false;
 }
 
+// Buff names only (never skills). POEFixer 375 and older showed every buff name
+// with a stray "_79" ending (a padding byte read as part of the id); 376 shows
+// the plain id. A pattern saved from those lists keeps matching the same buff,
+// judged against the name as the old list showed it (name + "_79"), and only
+// for patterns that carry that ending:
+//  - a pattern ending in "_79": Exact and Prefix match the name equal to the
+//    pattern without "_79", Contains a name that ends with it;
+//  - a Prefix pattern ending in "_" (the picker's prefix of an old "<id>_79")
+//    matches the name equal to the pattern without that "_".
+// Nothing else is broadened: "x_79" never prefix-matches "x_other".
+inline bool MatchesBuffName(const std::string& name, const std::string& pattern, MatchMode mode) {
+    if (Matches(name, pattern, mode)) return true;
+    if (name.empty()) return false;
+    auto namePlus = [&](const char* ending) {  // pattern == name + ending
+        const size_t n = std::strlen(ending);
+        return pattern.size() == name.size() + n && pattern.compare(0, name.size(), name) == 0 &&
+               pattern.compare(name.size(), n, ending) == 0;
+    };
+    switch (mode) {
+        case MatchMode::Exact:    return namePlus("_79");
+        case MatchMode::Prefix:   return namePlus("_79") || namePlus("_");
+        case MatchMode::Contains: {
+            if (pattern.size() <= 3 || pattern.compare(pattern.size() - 3, 3, "_79") != 0) return false;
+            const size_t n = pattern.size() - 3;
+            return name.size() >= n && name.compare(name.size() - n, n, pattern, 0, n) == 0;
+        }
+    }
+    return false;
+}
+
 inline bool StageMatches(int actual, StageCompare mode, int expected) {
     switch (mode) {
         case StageCompare::Any:          return true;
@@ -235,7 +265,7 @@ inline TrackerState Evaluate(const Tracker& t, const std::vector<BuffSample>& bu
         return s;
     }
     for (const BuffSample& b : buffs) {
-        if (!Matches(b.name, t.pattern, mode)) continue;
+        if (!MatchesBuffName(b.name, t.pattern, mode)) continue;
         if (!s.found) {
             s.found = true;
             s.value = b.charges;

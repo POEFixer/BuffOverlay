@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.6
+
+- Buff names saved with the old "_79" ending keep matching after POEFixer 376 shows plain buff ids.
+- The example tracker of a new install and the buff name hints use the plain buff id.
+
 ## 1.0.5
 
 - Built with the current plugin SDK: a controller that is not XInput reports no port (-1) even when ready.

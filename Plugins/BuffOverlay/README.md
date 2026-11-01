@@ -38,9 +38,10 @@ while the tracker matches something. **Add tracker**, **Duplicate** and
 - **Tracker name**: your own name for the tracker.
 - **Watch**: a buff on your character, or one of your active skills.
 - **Name to find**: the game's internal name of the buff or skill. **Pick** lists
-  what is active now; a name ending in a changing number (such as
-  `totem_ancestral_bond_reservation_79`) is turned into a "Starts with" rule
-  automatically.
+  what is active now; a buff name ending in a number (such as `shrine_cold_2`,
+  Freezing Shrine) is turned into a "Starts with" rule automatically. POEFixer
+  375 and older showed every buff name with a stray `_79` ending; names saved
+  from those lists keep finding the same buff.
 - **Match**: exact name, starts with, or contains (case-sensitive).
 - **Skill value** (skills only): use stage, total uses, available charges, max
   uses, or ready to use.

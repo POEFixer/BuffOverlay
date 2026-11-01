@@ -156,7 +156,7 @@ Tracker TrackerFromJson(const json& j) {
 Tracker MakeExampleTracker() {
     Tracker t;
     t.label = kExampleTrackerLabel;
-    t.pattern = "totem_ancestral_bond_reservation_";
+    t.pattern = "totem_ancestral_bond_reservation";  // Prefix: also the "_79" names of POEFixer 375 and older
     t.matchMode = static_cast<int>(MatchMode::Prefix);
     t.displayMode = static_cast<int>(DisplayMode::Charges);
     t.missingMode = static_cast<int>(MissingMode::ShowZero);
